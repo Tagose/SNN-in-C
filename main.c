@@ -86,11 +86,14 @@ int main()
    */ 
    int current_inputs = multiple_layer[0].no_of_input;
    int current_neurons = multiple_layer[0].no_of_neurons;
+   int output_spike_counts[10] = {0};// to track exactly how many times each output neuron (0-9) spikes for to make a prediction
 
    //main loop where main big league stuff happens
     for(int step=0;step<=50;step++)//time frame naoya style(like animation consider each step as a time frame )
     { 
-       printf("step %d spikes:[",step);
+       //printf("step %d spikes:[",step);
+       //printf("intermediate processing step %d...\n", step);
+
        float current_spikes[current_inputs]; // Holds the 1s and 0s for this specific step
 
        for(int i=0;i<current_inputs;i++)
@@ -102,6 +105,18 @@ int main()
         }
        }
 
+       //before the layer 0 stuff happens but after taking the poisson encoder spikes as current
+       int hidden_neurons = multiple_layer[0].no_of_neurons; 
+       float hidden_spikes[hidden_neurons];
+       // Initialize the net to 0 
+        for(int n = 0; n < hidden_neurons; n++) 
+        {
+            hidden_spikes[n] = 0.0;
+        }
+
+        // -------------------------------------------------------------
+        // LAYER 0 (inputt Layer)
+        // -------------------------------------------------------------
        float pre_attention_voltage[current_neurons];//array holds incoming volt before attention applied
        for(int temp=0;temp<current_neurons;temp++)
        {pre_attention_voltage[temp]=0;}
@@ -123,30 +138,79 @@ int main()
        for(int j=0;j<current_neurons;j++)
        {
          int spike=update_neuron(&multiple_layer[0].neurons[j],pre_attention_voltage[j],step);//calling update neuron for the actual LIF part
-         printf("%d",spike);
+         // Save the spike into layer 1
+         hidden_spikes[j] = (float)spike;
 
          for(int i=0;i<current_inputs;i++)//adjust weights to learn basically
          {
           stdp(&multiple_layer[0].weights[i][j],input_spike_time[i],multiple_layer[0].neurons[j].last_spike_time);
          }
        }
+      
 
 
-       printf("]\n");
+        // -------------------------------------------------------------
+        // LAYER 1 (Output Layer): Process hidden spikes and score
+        // -------------------------------------------------------------
+        int output_inputs = multiple_layer[1].no_of_input;    // 100 hidden neurons for now
+        int output_neurons = multiple_layer[1].no_of_neurons; // 10 ( for digits 0-9)
+
+        float pre_attention_voltage_1[output_neurons];
+        for(int temp = 0; temp < output_neurons; temp++) 
+        {
+            pre_attention_voltage_1[temp] = 0;
+        }
+
+        // The Relay: Layer 1 listens to Layer 0
+        for(int j = 0; j < output_neurons; j++) 
+        {  
+            for(int i = 0; i < output_inputs; i++) 
+            {
+                //using hidden spikes here instead of current ones
+                pre_attention_voltage_1[j] += (hidden_spikes[i] * multiple_layer[1].weights[i][j]);
+            } 
+        }
+
+        // Applying attention to the output layer
+        attention(pre_attention_voltage_1, output_neurons);
+
+        // Updating the output neurons
+        for(int j = 0; j < output_neurons; j++) {
+            int spike = update_neuron(&multiple_layer[1].neurons[j], pre_attention_voltage_1[j], step);
+            
+            // if fired, adds a point making cuonter go up
+            if (spike > 0) {
+                output_spike_counts[j]++; 
+            }
+        }
+
+       //printf("]\n");
     }
 
+  
+    // -------------------------------------------------------------
+    // THE FINAL PREDICTION
+    // -------------------------------------------------------------
+    int best_digit = 0;
+    int max_spikes = -1;
 
-
-    /*for (int i = 0; i < no_of_input; i++) 
-    {
-      free(weights[i]);
-        
+    printf("\n--- Final Output Spike Count ---\n");
+    for (int i = 0; i < 10; i++) {
+        printf("Digit %d fired %d times\n", i, output_spike_counts[i]);
+        if (output_spike_counts[i] > max_spikes) 
+        {
+            max_spikes = output_spike_counts[i];
+            best_digit = i;
+        }
     }
-    free(weights);
-    //freeing mem is important id almost forgotten lol
-    free(layer);
-    */
-  for (int l = 0; l<no_of_layers; l++) {
+
+    printf("\n----------------------------------------------------------------\n");
+    printf("   PREDICTION: The image is a %d!\n", best_digit);
+    printf("  ACTUAL LABEL:  %d\n", label);
+    printf("----------------------------------------------------------------\n"); 
+
+    
+   for (int l = 0; l<no_of_layers; l++) {
         // Free the columns
         for (int i = 0; i < multiple_layer[l].no_of_input; i++) {
             free(multiple_layer[l].weights[i]);
