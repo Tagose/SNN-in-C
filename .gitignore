@@ -1,0 +1,10 @@
+# Compiled binaries
+output
+*.o
+*.exe
+
+# Windows/WSL metadata files
+*:Zone.Identifier
+
+# Large dataset files
+*.csv
